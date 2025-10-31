@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
@@ -34,6 +35,7 @@ export default function Index() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export default function Index() {
 
       <nav className="bg-card border-b sticky top-[52px] z-40">
         <div className="container mx-auto px-4">
-          <div className="flex overflow-x-auto scrollbar-hide">
+          <div className="hidden md:flex overflow-x-auto scrollbar-hide">
             {[
               { id: 'home', label: 'Главная', icon: 'Home' },
               { id: 'search', label: 'Поиск', icon: 'Search' },
@@ -186,6 +188,63 @@ export default function Index() {
                 <span className="text-sm">Админ</span>
               </button>
             )}
+          </div>
+          <div className="md:hidden py-2">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" className="w-full justify-start">
+                  <Icon name="Menu" size={20} className="mr-2" />
+                  Меню
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[280px]">
+                <SheetHeader>
+                  <SheetTitle>Навигация</SheetTitle>
+                </SheetHeader>
+                <div className="flex flex-col gap-2 mt-6">
+                  {[
+                    { id: 'home', label: 'Главная', icon: 'Home' },
+                    { id: 'search', label: 'Поиск', icon: 'Search' },
+                    { id: 'catalog', label: 'Каталог', icon: 'ShoppingBag' },
+                    { id: 'profile', label: 'Профиль', icon: 'User' },
+                    { id: 'rules', label: 'Правила', icon: 'FileText' },
+                    { id: 'support', label: 'Поддержка', icon: 'HelpCircle' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-secondary'
+                      }`}
+                    >
+                      <Icon name={tab.icon as any} size={20} />
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                  {user?.is_admin && (
+                    <button
+                      onClick={() => {
+                        setActiveTab('admin');
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                        activeTab === 'admin'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-foreground hover:bg-secondary'
+                      }`}
+                    >
+                      <Icon name="Shield" size={20} />
+                      <span>Админ</span>
+                    </button>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </nav>
