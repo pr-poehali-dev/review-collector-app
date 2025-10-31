@@ -1,0 +1,33 @@
+{
+  "tests": [
+    {
+      "name": "Get approved reviews",
+      "method": "GET",
+      "path": "/",
+      "queryStringParameters": {
+        "status": "approved",
+        "limit": "10"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "reviews": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Search reviews by article",
+      "method": "GET",
+      "path": "/",
+      "queryStringParameters": {
+        "article": "WB123",
+        "status": "approved"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

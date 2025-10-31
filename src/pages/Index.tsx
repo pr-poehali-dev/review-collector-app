@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
+import { useToast } from '@/hooks/use-toast';
+import { api, storage, type Review, type User } from '@/lib/api';
 
 const marketplaces = [
   { id: 'wb', name: 'Wildberries', icon: '🛍️', color: 'bg-purple-100 hover:bg-purple-200' },
@@ -17,33 +19,112 @@ const marketplaces = [
   { id: 'magnit', name: 'Магнит Маркет', icon: '🔴', color: 'bg-red-100 hover:bg-red-200' },
 ];
 
-const mockReviews = [
-  {
-    id: 1,
-    marketplace: 'Wildberries',
-    article: 'WB12345678',
-    seller: 'ООО "Продавец"',
-    rating: 1,
-    text: 'Товар не соответствует описанию. Отзыв не прошёл модерацию на площадке.',
-    date: '2024-10-25',
-    hasScreenshots: true,
-  },
-  {
-    id: 2,
-    marketplace: 'OZON',
-    article: 'OZ87654321',
-    seller: 'Магазин текстиля',
-    rating: 2,
-    text: 'Долгая доставка, качество ниже ожидаемого. Площадка удалила честный отзыв.',
-    date: '2024-10-20',
-    hasScreenshots: true,
-  },
-];
+const marketplacesMap: { [key: string]: number } = {
+  'wb': 1,
+  'ozon': 2,
+  'yandex': 3,
+  'mega': 4,
+  'magnit': 5,
+};
 
 export default function Index() {
   const [activeTab, setActiveTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const savedUser = storage.getUser();
+    if (savedUser) {
+      setUser(savedUser);
+    }
+    loadReviews();
+  }, []);
+
+  const loadReviews = async () => {
+    try {
+      setLoading(true);
+      const data = await api.reviews.getAll({ status: 'approved', limit: 50 });
+      setReviews(data.reviews);
+    } catch (error: any) {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+
+    try {
+      setLoading(true);
+      if (authMode === 'register') {
+        const username = formData.get('username') as string;
+        const result = await api.auth.register(email, username, password);
+        setUser(result.user);
+        storage.setUser(result.user);
+        storage.setToken(result.token);
+        toast({ title: 'Успешно!', description: 'Регистрация прошла успешно' });
+      } else {
+        const result = await api.auth.login(email, password);
+        setUser(result.user);
+        storage.setUser(result.user);
+        storage.setToken(result.token);
+        toast({ title: 'Добро пожаловать!', description: `Привет, ${result.user.username}` });
+      }
+      setActiveTab('home');
+    } catch (error: any) {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    storage.clearAuth();
+    setUser(null);
+    toast({ title: 'Выход', description: 'Вы вышли из аккаунта' });
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user) {
+      toast({ title: 'Ошибка', description: 'Необходимо авторизоваться', variant: 'destructive' });
+      return;
+    }
+
+    const formData = new FormData(e.currentTarget);
+    const marketplaceCode = formData.get('marketplace') as string;
+    
+    try {
+      setLoading(true);
+      await api.reviews.create(
+        {
+          marketplace_id: marketplacesMap[marketplaceCode],
+          article: formData.get('article') as string,
+          product_link: formData.get('link') as string,
+          seller_name: formData.get('seller') as string,
+          rating: parseInt(formData.get('rating') as string),
+          review_text: formData.get('review') as string,
+          moderation_screenshots: [],
+          public_photos: [],
+        },
+        String(user.id)
+      );
+      toast({ title: 'Отлично!', description: 'Отзыв отправлен на модерацию' });
+      e.currentTarget.reset();
+    } catch (error: any) {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-secondary">
@@ -53,9 +134,18 @@ export default function Index() {
             <Icon name="MessageSquare" size={24} />
             <h1 className="text-xl font-bold">Честные Отзывы</h1>
           </div>
-          <Button variant="ghost" size="sm" className="text-primary-foreground hover:bg-primary/90">
-            <Icon name="User" size={20} />
-          </Button>
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm hidden sm:inline">{user.username}</span>
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-primary-foreground hover:bg-primary/90">
+                <Icon name="LogOut" size={20} />
+              </Button>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setActiveTab('profile')} className="text-primary-foreground hover:bg-primary/90">
+              <Icon name="User" size={20} />
+            </Button>
+          )}
         </div>
       </header>
 
@@ -83,7 +173,7 @@ export default function Index() {
                 <span className="text-sm">{tab.label}</span>
               </button>
             ))}
-            {isAdmin && (
+            {user?.is_admin && (
               <button
                 onClick={() => setActiveTab('admin')}
                 className={`flex items-center gap-2 px-4 py-3 whitespace-nowrap transition-colors ${
@@ -125,11 +215,19 @@ export default function Index() {
                     <DialogHeader>
                       <DialogTitle>Новый отзыв</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
+                    {!user ? (
+                      <div className="text-center py-6">
+                        <p className="text-muted-foreground mb-4">Необходимо авторизоваться</p>
+                        <Button onClick={() => setActiveTab('profile')}>Войти</Button>
+                      </div>
+                    ) : (
+                    <form onSubmit={handleSubmitReview} className="space-y-4">
                       <div>
                         <Label htmlFor="marketplace">Маркетплейс *</Label>
                         <select
                           id="marketplace"
+                          name="marketplace"
+                          required
                           className="w-full mt-1 px-3 py-2 border border-input rounded-md bg-background"
                         >
                           <option value="">Выберите маркетплейс</option>
@@ -142,19 +240,19 @@ export default function Index() {
                       </div>
                       <div>
                         <Label htmlFor="article">Артикул товара *</Label>
-                        <Input id="article" placeholder="Например: WB12345678" className="mt-1" />
+                        <Input id="article" name="article" required placeholder="Например: WB12345678" className="mt-1" />
                       </div>
                       <div>
                         <Label htmlFor="link">Ссылка на товар</Label>
-                        <Input id="link" placeholder="https://..." className="mt-1" />
+                        <Input id="link" name="link" placeholder="https://..." className="mt-1" />
                       </div>
                       <div>
                         <Label htmlFor="seller">Продавец</Label>
-                        <Input id="seller" placeholder="Название продавца" className="mt-1" />
+                        <Input id="seller" name="seller" placeholder="Название продавца" className="mt-1" />
                       </div>
                       <div>
                         <Label htmlFor="rating">Оценка *</Label>
-                        <select id="rating" className="w-full mt-1 px-3 py-2 border border-input rounded-md bg-background">
+                        <select id="rating" name="rating" required className="w-full mt-1 px-3 py-2 border border-input rounded-md bg-background">
                           <option value="1">⭐ 1 - Ужасно</option>
                           <option value="2">⭐⭐ 2 - Плохо</option>
                           <option value="3">⭐⭐⭐ 3 - Средне</option>
@@ -177,12 +275,17 @@ export default function Index() {
                         <Label htmlFor="review">Текст отзыва *</Label>
                         <Textarea
                           id="review"
+                          name="review"
+                          required
                           placeholder="Опишите вашу ситуацию подробно..."
                           className="mt-1 min-h-[120px]"
                         />
                       </div>
-                      <Button className="w-full">Отправить на модерацию</Button>
-                    </div>
+                      <Button type="submit" className="w-full" disabled={loading}>
+                        {loading ? 'Отправка...' : 'Отправить на модерацию'}
+                      </Button>
+                    </form>
+                    )}
                   </DialogContent>
                 </Dialog>
               </CardContent>
@@ -194,32 +297,42 @@ export default function Index() {
                 Последние отзывы
               </h2>
               <div className="space-y-3">
-                {mockReviews.map((review) => (
-                  <Card key={review.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
-                    <CardContent className="pt-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <Badge variant="secondary" className="mb-2">
-                            {review.marketplace}
-                          </Badge>
-                          <p className="font-medium">{review.article}</p>
-                          <p className="text-sm text-muted-foreground">{review.seller}</p>
+                {loading ? (
+                  <p className="text-center text-muted-foreground py-8">Загрузка...</p>
+                ) : reviews.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Отзывов пока нет</p>
+                ) : (
+                  reviews.map((review) => (
+                    <Card key={review.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
+                      <CardContent className="pt-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <Badge variant="secondary" className="mb-2">
+                              {review.marketplace_icon} {review.marketplace_name}
+                            </Badge>
+                            <p className="font-medium">{review.article}</p>
+                            {review.seller_name && (
+                              <p className="text-sm text-muted-foreground">{review.seller_name}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-yellow-500">{'⭐'.repeat(review.rating)}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(review.created_at).toLocaleDateString('ru')}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-yellow-500">{'⭐'.repeat(review.rating)}</div>
-                          <p className="text-xs text-muted-foreground mt-1">{review.date}</p>
-                        </div>
-                      </div>
-                      <p className="text-sm mt-3">{review.text}</p>
-                      {review.hasScreenshots && (
-                        <div className="flex items-center gap-1 mt-3 text-xs text-muted-foreground">
-                          <Icon name="Image" size={14} />
-                          <span>Есть скриншоты</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                        <p className="text-sm mt-3">{review.review_text}</p>
+                        {review.public_photos?.length > 0 && (
+                          <div className="flex items-center gap-1 mt-3 text-xs text-muted-foreground">
+                            <Icon name="Image" size={14} />
+                            <span>Есть фото</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -307,26 +420,80 @@ export default function Index() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="text-center py-8">
-                  <div className="w-20 h-20 bg-primary/10 rounded-full mx-auto flex items-center justify-center mb-4">
-                    <Icon name="User" size={40} className="text-primary" />
+                {!user ? (
+                  <div className="max-w-sm mx-auto">
+                    <Tabs value={authMode} onValueChange={(v) => setAuthMode(v as 'login' | 'register')}>
+                      <TabsList className="grid w-full grid-cols-2 mb-4">
+                        <TabsTrigger value="login">Вход</TabsTrigger>
+                        <TabsTrigger value="register">Регистрация</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="login">
+                        <form onSubmit={handleAuth} className="space-y-4">
+                          <div>
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" name="email" type="email" required className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="password">Пароль</Label>
+                            <Input id="password" name="password" type="password" required className="mt-1" />
+                          </div>
+                          <Button type="submit" className="w-full" disabled={loading}>
+                            {loading ? 'Вход...' : 'Войти'}
+                          </Button>
+                        </form>
+                      </TabsContent>
+                      <TabsContent value="register">
+                        <form onSubmit={handleAuth} className="space-y-4">
+                          <div>
+                            <Label htmlFor="reg-email">Email</Label>
+                            <Input id="reg-email" name="email" type="email" required className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="username">Имя пользователя</Label>
+                            <Input id="username" name="username" required className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="reg-password">Пароль</Label>
+                            <Input id="reg-password" name="password" type="password" required className="mt-1" />
+                          </div>
+                          <Button type="submit" className="w-full" disabled={loading}>
+                            {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+                          </Button>
+                        </form>
+                      </TabsContent>
+                    </Tabs>
                   </div>
-                  <Button variant="outline">Войти / Регистрация</Button>
-                </div>
-                <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
-                    <Icon name="FileText" size={20} />
-                    <span>Мои отзывы</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
-                    <Icon name="Bell" size={20} />
-                    <span>Уведомления</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
-                    <Icon name="Settings" size={20} />
-                    <span>Настройки</span>
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    <div className="text-center py-6">
+                      <div className="w-20 h-20 bg-primary/10 rounded-full mx-auto flex items-center justify-center mb-4">
+                        <Icon name="User" size={40} className="text-primary" />
+                      </div>
+                      <h3 className="font-semibold text-lg">{user.username}</h3>
+                      <p className="text-sm text-muted-foreground">{user.email}</p>
+                      {user.is_admin && (
+                        <Badge className="mt-2">Администратор</Badge>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
+                        <Icon name="FileText" size={20} />
+                        <span>Мои отзывы</span>
+                      </button>
+                      <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
+                        <Icon name="Bell" size={20} />
+                        <span>Уведомления</span>
+                      </button>
+                      <button className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
+                        <Icon name="Settings" size={20} />
+                        <span>Настройки</span>
+                      </button>
+                      <Button variant="destructive" className="w-full" onClick={handleLogout}>
+                        Выйти
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -423,7 +590,7 @@ export default function Index() {
           </div>
         )}
 
-        {activeTab === 'admin' && isAdmin && (
+        {activeTab === 'admin' && user?.is_admin && (
           <div className="space-y-6 animate-fade-in">
             <Card className="border-none shadow-sm">
               <CardHeader>
@@ -451,14 +618,7 @@ export default function Index() {
         )}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-card border-t py-2 text-center text-xs text-muted-foreground">
-        <button
-          onClick={() => setIsAdmin(!isAdmin)}
-          className="hover:text-foreground transition-colors"
-        >
-          {isAdmin ? '👤 Режим пользователя' : '🔐 Режим администратора'}
-        </button>
-      </footer>
+
     </div>
   );
 }
