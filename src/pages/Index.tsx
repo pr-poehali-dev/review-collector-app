@@ -192,10 +192,7 @@ export default function Index() {
           <div className="md:hidden py-2">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Icon name="Menu" size={20} className="mr-2" />
-                  Меню
-                </Button>
+                <Button variant="ghost" className="w-full justify-start"></Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[280px]">
                 <SheetHeader>
