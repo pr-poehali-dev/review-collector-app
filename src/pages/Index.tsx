@@ -134,7 +134,7 @@ export default function Index() {
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Icon name="MessageSquare" size={24} />
-            <h1 className="text-xl font-bold">Честные Отзывы</h1>
+            <h1 className="text-xl font-bold">Честный Отзыв</h1>
           </div>
           {user ? (
             <div className="flex items-center gap-2">
