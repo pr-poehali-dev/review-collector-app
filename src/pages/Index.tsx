@@ -103,9 +103,29 @@ export default function Index() {
 
     const formData = new FormData(e.currentTarget);
     const marketplaceCode = formData.get('marketplace') as string;
+    const screenshotFiles = formData.getAll('screenshots') as File[];
+    const photoFiles = formData.getAll('photos') as File[];
     
     try {
       setLoading(true);
+      
+      const screenshotUrls: string[] = [];
+      const photoUrls: string[] = [];
+
+      for (const file of screenshotFiles) {
+        if (file.size > 0) {
+          const base64 = await fileToBase64(file);
+          screenshotUrls.push(base64);
+        }
+      }
+
+      for (const file of photoFiles) {
+        if (file.size > 0) {
+          const base64 = await fileToBase64(file);
+          photoUrls.push(base64);
+        }
+      }
+
       await api.reviews.create(
         {
           marketplace_id: marketplacesMap[marketplaceCode],
@@ -114,8 +134,8 @@ export default function Index() {
           seller_name: formData.get('seller') as string,
           rating: parseInt(formData.get('rating') as string),
           review_text: formData.get('review') as string,
-          moderation_screenshots: [],
-          public_photos: [],
+          moderation_screenshots: screenshotUrls,
+          public_photos: photoUrls,
         },
         String(user.id)
       );
@@ -126,6 +146,15 @@ export default function Index() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
   };
 
   return (
